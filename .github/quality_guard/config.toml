@@ -1,0 +1,38 @@
+[tool.quality_guard]
+package = "src"
+tests = "tests"
+allowed_deps = ""            # ex. "allowed-deps.txt", à placer dans ce dossier, pour activer la liste blanche
+docstrings = 90.0            # interrogate
+coverage = 92.5              # pytest-cov, tous les tests
+unit_coverage = 80.0         # pytest-cov, sans les tests marqués « integration »
+typing_quality = 99.0        # 1 - erreurs mypy / lignes logiques
+typing_precision = 90.0      # 100 - imprécision mypy
+complexity = "B"             # pire rang radon cc autorisé par fonction
+maintainability = "A"        # pire rang radon mi autorisé par fichier
+require_tests = false        # true : au moins un test exigé
+blocking = ["formatting", "tests", "security", "dep-security"]
+
+# --- Configuration des outils (black : règles natives ; isort : profil black) ---
+
+[tool.interrogate]
+ignore-init-module = true
+ignore-init-method = true
+ignore-module = true
+ignore-magic = true
+ignore-regex = ["^Test.*", "^test_.*"]
+fail-under = 90
+verbose = 0
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true   # on mesure le typage du code de l'équipe, pas celui des bibliothèques
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]          # le dossier src/ est ajouté au chemin par qg.py
+addopts = "-ra"
+markers = [
+    "integration: test qui dépend d'un service externe (API, base de données, réseau)",
+]

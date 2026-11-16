@@ -1,0 +1,80 @@
+# Quality Guard : contrôle qualité minimum à chaque push sur main.
+# Il ne bloque rien : il marque le commit ✅ ou ❌ et affiche un tableau par session
+# dans l'onglet Actions. Deux filtres évitent de tourner pour rien :
+#  1. GitHub ne lance le workflow que si le push touche le code d'une session
+#     (dossiers NN-filiere, hors README, docs/ et notebooks/) ou l'outillage Quality Guard ;
+#  2. le job repère les sessions modifiées et ne contrôle qu'elles ; s'il n'y en a
+#     aucune, il s'arrête avant d'installer Python et les outils.
+# Dépendances : uv, Poetry, Pipenv ou pip, au choix de l'équipe (voir dependencies.py).
+# Lancement manuel possible (Actions › Quality Guard › Run workflow) : toutes les sessions.
+name: Quality Guard
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "[0-9][0-9]-*/**"
+      - ".github/quality_guard/**"
+      - ".github/workflows/quality-guard.yml"
+      - "!**.md"
+      - "!**/docs/**"
+      - "!**/notebooks/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality-guard:
+    name: Quality Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Sessions à contrôler
+        id: detect
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.before }}
+        run: python3 .github/quality_guard/sessions.py  # Python du runner : rien à installer
+
+      - uses: actions/setup-python@v7
+        if: steps.detect.outputs.list != '[]'
+        with:
+          python-version: "3.14.10"
+          cache: pip
+          cache-dependency-path: .github/quality_guard/requirements.txt
+
+      - name: Installer les outils
+        if: steps.detect.outputs.list != '[]'
+        run: pip install -r .github/quality_guard/requirements.txt
+
+      - name: Contrôler
+        if: steps.detect.outputs.list != '[]'
+        env:
+          SESSIONS: ${{ steps.detect.outputs.list }}
+        # Un environnement neuf par session : les dépendances d'une session ne
+        # doivent ni masquer ni casser celles de la suivante.
+        run: |
+          status=0
+          for s in $(python -c 'import json, os; print(" ".join(json.loads(os.environ["SESSIONS"])))'); do
+            venv="$RUNNER_TEMP/venv-$s"
+            python -m venv "$venv"
+            python .github/quality_guard/dependencies.py "$s" || status=1
+            "$venv/bin/python" -m pip install -r "$s/reports/dependencies.txt" || status=1
+            "$venv/bin/python" -m pip install -q -r .github/quality_guard/requirements.txt || status=1  # en dernier : garde les versions des outils
+            "$venv/bin/python" .github/quality_guard/qg.py "$s" || status=1
+          done
+          exit "$status"
+
+      - name: Rapports détaillés
+        if: always() && steps.detect.outputs.list != '[]'
+        uses: actions/upload-artifact@v7
+        with:
+          name: quality-guard-rapports
+          path: "*/reports/"
+          if-no-files-found: ignore
+          retention-days: 14

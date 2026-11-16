@@ -1,0 +1,15 @@
+# Facultatif : corrige le formatage et vérifie la sécurité avant chaque commit.
+# Installation : pip install pre-commit && pre-commit install -c .github/quality_guard/pre-commit-config.yaml
+repos:
+  - repo: https://github.com/psf/black
+    rev: 26.10.1
+    hooks:
+      - id: black
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.9.4
+    hooks:
+      - id: bandit
+        args: [-ll, -c, .github/quality_guard/config.toml]
+        additional_dependencies: ["bandit[toml]"]
+        files: ^\d{2}-[^/]+/
+        exclude: /(tests|notebooks|docs)/
